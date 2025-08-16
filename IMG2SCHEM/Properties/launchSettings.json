@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "IMG2SCHEM": {
+      "commandName": "Project",
+      "commandLineArgs": "-i \"D:\\Github\\IMG2SCHEM\\IMG2SCHEM\\src.jpg\""
+    }
+  }
+}
