@@ -1,23 +1,40 @@
 ﻿using CommandLine;
 using CommandLine.Text;
 using ImageMagick;
-using ImageMagick.Colors;
-using MindustryChematicCreator;
-using MindustryChematicCreator.Configs;
 using MindustrySchematicCreator;
-using System.Diagnostics;
-using System.Drawing;
-using System.IO.Pipelines;
-using System.Net.Security;
 using System.Text;
-using System.Threading.Channels;
 using TextCopy;
 
 namespace IMG2SCHEM
 {
     internal class Program
     {
-        class Options
+        public readonly record struct DisplayShape(int Width, int Height)
+        {
+            public override string ToString() => $"{Width}x{Height}";
+
+            public static bool TryParse(string value, out DisplayShape shape)
+            {
+                shape = default;
+
+                if (string.IsNullOrWhiteSpace(value))
+                    return false;
+
+                var parts = value.Split('x', 'X');
+                if (parts.Length != 2)
+                    return false;
+
+                if (int.TryParse(parts[0], out int w) && int.TryParse(parts[1], out int h))
+                {
+                    shape = new DisplayShape(w, h);
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
+        public class Options
         {
             #region file io
 
@@ -32,14 +49,14 @@ namespace IMG2SCHEM
 
             #region image settings
 
-            [Option(shortName: 'r', longName: "image-resolution", Required = false, HelpText = "The resolution to resize the input image to.", Default = (uint)176)]
-            public uint ImageResolution { get; set; }
+            [Option('r', "image-resolution", Required = false, HelpText = "The resolution(s) to resize the input image to for a display.")]
+            public IEnumerable<uint> ImageResolutions { get; set; } = [];
 
-            [Option(shortName: 'c', longName: "color-amount", Required = false, HelpText = "The amount of colors to be used.", Default = (uint)32)]
-            public uint ColorAmount { get; set; }
+            [Option('c', "color-amount", Required = false, HelpText = "The amount(s) of colors to be used.")]
+            public IEnumerable<uint> ImageColorAmounts { get; set; } = [];
 
-            [Option(shortName: 'd', longName: "dittering-method", Required = false, HelpText = "The dittering method to be used", Default = DitherMethod.No)]
-            public DitherMethod ImageDitherMethod { get; set; }
+            [Option('d', "dithering-method", Required = false, HelpText = "The dithering method(s) to be used.")]
+            public IEnumerable<DitherMethod> ImageDitherMethods { get; set; } = [];
 
             #endregion
 
@@ -78,6 +95,19 @@ namespace IMG2SCHEM
             [Option("name", Required = false, HelpText = "Name of the output schematic.", Default = "Unnamed")]
             public string SchematicName { get; set; } = "Unnamed";
 
+            [Option(shortName: 's', longName: "display-shape", Required = false, HelpText = "The shape of the resulting display (e.g. 1x1, 2x1, 4x2)", Default = "1x1")]
+            public string DisplayShapeString { get; set; } = "1x1";
+
+            public DisplayShape DisplayShape
+            {
+                get
+                {
+                    if (!DisplayShape.TryParse(DisplayShapeString, out var shape))
+                        throw new ArgumentException($"Invalid display shape: {DisplayShapeString}");
+                    return shape;
+                }
+            }
+
             #endregion
         }
 
@@ -94,7 +124,10 @@ namespace IMG2SCHEM
                 .WithParsed(options =>
                 {
                     if (AreOptionsValid(options))
-                        Run(options);
+                    {
+                        Program.options = options;
+                        Run();
+                    }
 
 
                 })
@@ -131,15 +164,30 @@ namespace IMG2SCHEM
                 Console.WriteLine($"Error: '{options.OutputFile}' is not a valid output path.");
                 return false;
             }
-            if (options.ImageResolution > 176)
+            if (options.ImageResolutions.Any(x => x > 176))
             {
                 Console.WriteLine("Error: Image resolution cannot exceed 176.");
                 return false;
 
             }
-            if (options.ColorAmount is < 2 or > 256)
+            if (options.ImageColorAmounts.Any(x => x is < 2 or > 256))
             {
                 Console.WriteLine("Error: Color amount must be between 2 and 256.");
+                return false;
+            }
+
+            if (!DisplayShape.TryParse(options.DisplayShapeString, out var shape))
+            {
+                Console.WriteLine($"Error: '{options.DisplayShapeString}' is not a valid display shape. Expected format: WxH (e.g. 1x1, 2x1, 4x2).");
+
+                return false;
+            }
+
+            (int x, int y) shapeXY = (shape.Width, shape.Height);
+
+            if (!PreDefinedClusterShapes.validShapes.Contains(shapeXY))
+            {
+                Console.WriteLine($"Error: No predefined cluster shape found for {options.DisplayShape.Width}x{options.DisplayShape.Height}.");
                 return false;
             }
 
@@ -150,27 +198,29 @@ namespace IMG2SCHEM
                 else
                     return false;
             }
+
+
+
+
+            if (options.ImageDitherMethods.Count() == 0)
+                options.ImageDitherMethods = [DitherMethod.No];
+            if (options.ImageResolutions.Count() == 0)
+                options.ImageResolutions = [176];
+            if (options.ImageColorAmounts.Count() == 0)
+                options.ImageColorAmounts = [16];
+
             return true;
         }
-        static void Run(Options options)
+
+#pragma warning disable CS8618
+        public static Options options;
+        public static MagickImage FullImage;
+#pragma warning restore CS8618
+        static void Run()
         {
             MagickImage image = new MagickImage(File.ReadAllBytes(options.InputFile));
             image.Flip();
-
-            uint imgRes = options.ImageResolution;
-
-            (float scaleRatioX, float scaleRatioY) = (176f / imgRes, 176f / imgRes);
-
-            MagickGeometry geometry = new(imgRes, imgRes);
-            geometry.IgnoreAspectRatio = true;
-            image.Resize(geometry);
-
-            QuantizeSettings settings = new();
-
-            settings.Colors = options.ColorAmount;
-            settings.DitherMethod = options.ImageDitherMethod;
-
-            image.Quantize(settings);
+            FullImage = image;
 
             if (options.Debug)
             {
@@ -179,164 +229,26 @@ namespace IMG2SCHEM
                 Console.WriteLine("Wrote proccessed image into: " + debugImageOutPath);
             }
 
-
-            #region color block creation
-            IPixelCollection<byte> pixels = image.GetPixels();
-
-            uint width = image.Width;
-            uint height = image.Height;
-            uint channels = image.ChannelCount;
-            List<ColorBlock> blocks = new List<ColorBlock>();
-
-            bool[,] visited = new bool[width, height];
-
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    if (visited[x, y])
-                        continue;
-
-                    IPixel<byte> pixel = pixels.GetPixel(x, y);
-
-                    Color pixelCol = Color.FromArray(pixel, channels);
-
-                    int runW = 1;
-
-                    while
-                        (
-                            x + runW < width &&
-                            !visited[x + runW, y] &&
-                            Color.FromArray(pixels.GetPixel(x + runW, y), channels) == pixelCol
-                        )
-                        runW++; // select all the horizontal pixels that are the same color
-
-
-                    int runH = 1;
-                    bool done = false;
-                    while (y + runH < height && !done)
-                    {
-                        for (int dx = 0; dx < runW; dx++)
-                        {
-                            if (visited[x + dx, y + runH] || Color.FromArray(pixels.GetPixel(x + dx, y + runH), channels) != pixelCol)
-                            {
-                                done = true;
-                                break;
-                            }
-                        }
-                        if (!done) runH++;
-                    }
-
-                    for (int yy = y; yy < y + runH; yy++)
-                        for (int xx = x; xx < x + runW; xx++)
-                            visited[xx, yy] = true;
-
-
-                    blocks.Add(new ColorBlock(x, y, runW, runH, pixelCol));
-                }
-            }
-            #endregion
-
-
             Schematic schem = new();
             schem.Name = options.SchematicName;
 
-            Block display = new(BlockData.Blocks[BlockType.large_logic_display], 1, 0);
-            schem.AddBlock(display);
 
-            LogicCodeConfig code = new LogicCodeConfig();
-            StringBuilder sb = new();
-
-            blocks.Sort((a, b) =>
+            switch (options.DisplayShape)
             {
-                int colorA = (a.col.r << 24) | (a.col.g << 16) | (a.col.b << 8) | a.col.a;
-                int colorB = (b.col.r << 24) | (b.col.g << 16) | (b.col.b << 8) | b.col.a;
-                return colorA.CompareTo(colorB);
-            });
-
-
-            Color? lastColor = blocks[0].col;
-            int blockOffset = 0;
-            int newlineCount = 0;
-            string outCode = "";
-
-            #region code creation functions
-            // adds the flush command
-            void flush()
-            { sb.AppendLine($"drawflush display1"); newlineCount++; }
-
-            // adds the logic block to the schematic
-            void addLogic()
-            {
-                Block logicBlock = new(BlockData.Blocks[BlockType.micro_processor], 0, blockOffset); // create the block
-
-                LogicCodeConfig clonedConfig = (LogicCodeConfig)code.Clone(); // clone the config
-                clonedConfig.Code = outCode.Remove(outCode.Length - 2); // put the code with last newline and carrier removed
-                clonedConfig.Links.Add(new(display, logicBlock)); // add the display to the list
-                logicBlock.config = clonedConfig; // update the blocks config
-                schem.AddBlock(logicBlock); // add the block to schem
+                case { Width: 1, Height: 1 }:
+                    PreDefinedClusterShapes.Get1x1(FullImage).FillSchem(schem);
+                    break;
+                case { Width: 2, Height: 1 }:
+                    PreDefinedClusterShapes.Get2x1(FullImage).FillSchem(schem);
+                    break;
+                case { Width: 1, Height: 2 }:
+                    PreDefinedClusterShapes.Get1x2(FullImage).FillSchem(schem);
+                    break;
+                default:
+                    Console.WriteLine($"Error: No predefined cluster shape found for {options.DisplayShape.Width}x{options.DisplayShape.Height}.");
+                    break;
             }
-            // updates the code string and clears the sb
-            void clear()
-            {
-                outCode = sb.ToString();
 
-                sb.Clear(); // clear the code for the next commands
-                newlineCount = 0; // reset the line counter
-            }
-            #endregion
-
-            #region code creation
-            for (int blockIndex = 0; blockIndex < blocks.Count; blockIndex++)
-            {
-                ColorBlock drawBlock = blocks[blockIndex];
-
-                void drawCol()
-                { sb.AppendLine($"draw color {drawBlock.col.r} {drawBlock.col.g} {drawBlock.col.b} {drawBlock.col.a} 0 0"); newlineCount++; }
-
-                if (lastColor != drawBlock.col || !sb.ToString().Contains("draw color"))
-                {
-                    lastColor = drawBlock.col;
-                    flush();
-                    drawCol();
-                }
-
-                sb.AppendLine(
-                    $"draw rect " +
-                    $"{Math.Ceiling(drawBlock.x * scaleRatioX)} " +
-                    $"{Math.Ceiling(drawBlock.y * scaleRatioY)} " +
-                    $"{Math.Ceiling(drawBlock.width * scaleRatioX)} " +
-                    $"{Math.Ceiling(drawBlock.height * scaleRatioY)} " +
-                    $"0 0");
-                newlineCount++;
-
-
-                if (newlineCount % 100 == 0)
-                {
-                    flush();
-                    drawCol();
-                }
-
-                // filter so we dont pass the insturction limit
-                if (newlineCount >= 995)
-                {
-                    flush(); // draw everything left
-
-                    // get all the code
-                    clear(); // clear the sb and update the code string
-                    addLogic(); // add the logic block
-
-                    drawCol(); // add the draw color as this is the new block
-
-                    blockOffset++; // Move to the next processor slot (vertical offset in schematic)
-                }
-            }
-            #endregion
-
-            // be sure to finish up the last logic block
-            flush();
-            clear();
-            addLogic();
 
 
             string schemOut = schem.GetBase64();
@@ -362,16 +274,17 @@ namespace IMG2SCHEM
             if (options.PrintOutput)
                 Console.WriteLine(schemOut);
 
-            ConfirmOutput(options, schem, blocks);
+            ConfirmOutput(options, schem);
         }
-        static void ConfirmOutput(Options options, Schematic schem, List<ColorBlock> blocks)
+        static void ConfirmOutput(Options options, Schematic schem)
         {
             StringBuilder output = new();
 
             output.AppendLine($"Successfully created schematic: {options.SchematicName}");
             output.AppendLine($"Input: {options.InputFile}");
-            output.AppendLine($"Output resolution: {options.ImageResolution}x{options.ImageResolution}");
-            output.AppendLine($"Color amount: {options.ColorAmount}");
+            output.AppendLine($"Output resolution(s): {string.Join(", ", options.ImageResolutions)}x{string.Join(", ", options.ImageResolutions)}");
+            output.AppendLine($"Color amount(s): {string.Join(", ", options.ImageColorAmounts)}");
+            output.AppendLine($"Dittering Method: {string.Join(", ", options.ImageDitherMethods)}");
             output.AppendLine($"Proccessors used: {schem.Blocks.Where(s => s.data.Name.Contains("processor")).ToArray().Length}");
             output.AppendLine($"Total blocks: {schem.Blocks.Count}");
             if (options.OutputToFile)
@@ -380,21 +293,21 @@ namespace IMG2SCHEM
                 output.AppendLine($"Successfully pasted to clipboard.");
             if (options.Verbose)
             {
+                // TODO: make this more accurate, rn it quantizes the whole image instead of all the sections which isnt accurate as not each section will have the same color palette
                 output.AppendLine("v:");
-                output.AppendLine("\t" + "Color block count: " + blocks.Count);
-                output.AppendLine("\t" + "Used colors:");
-                #region used colors creation
+                IMagickImage<byte> colorCountImage = FullImage.Clone();
+                colorCountImage.Resize(new MagickGeometry(options.ImageResolutions.ToArray()[0], options.ImageResolutions.ToArray()[0]) { IgnoreAspectRatio = true });
+                colorCountImage.Quantize(new QuantizeSettings { Colors = options.ImageColorAmounts.ToArray()[0], DitherMethod = options.ImageDitherMethods.ToArray()[0] });
+                IReadOnlyDictionary<IMagickColor<byte>, uint> histogramResult = colorCountImage.Histogram();
+
                 List<Color> usedColors = new List<Color>();
-                Color? lastColor = null;
-                foreach (var block in blocks)
-                {
-                    if (lastColor == null || lastColor != block.col)
-                    {
-                        usedColors.Add(block.col);
-                        lastColor = block.col;
-                    }
+                foreach (KeyValuePair<IMagickColor<byte>, uint> histo in histogramResult)
+                { // idk what im suppose to name the item tbh
+                    usedColors.Add(new(histo.Key.R, histo.Key.G, histo.Key.B, histo.Key.A));
                 }
-                #endregion
+                //output.AppendLine("\t" + "Color count: " + usedColors.Count);
+                output.AppendLine("\t" + "Colors:" + usedColors.Count);
+
                 usedColors.ForEach(c => output.AppendLine($"\t\t#{c.r:X2}{c.g:X2}{c.b:X2}{c.a:X2}"));
             }
 
