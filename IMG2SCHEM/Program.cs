@@ -244,6 +244,9 @@ namespace IMG2SCHEM
                 case { Width: 1, Height: 2 }:
                     PreDefinedClusterShapes.Get1x2(FullImage).FillSchem(schem);
                     break;
+                case { Width: 2, Height: 2 }:
+                    PreDefinedClusterShapes.Get2x2(FullImage).FillSchem(schem);
+                    break;
                 default:
                     Console.WriteLine($"Error: No predefined cluster shape found for {options.DisplayShape.Width}x{options.DisplayShape.Height}.");
                     break;
