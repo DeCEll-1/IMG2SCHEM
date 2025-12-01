@@ -19,6 +19,14 @@
     "2x2": {
       "commandName": "Project",
       "commandLineArgs": "-i \"D:\\Github\\IMG2SCHEM\\IMG2SCHEM\\1x1.jpg\" -p -s 2x2 -c 32 16 16 16"
+    },
+    "3x3": {
+      "commandName": "Project",
+      "commandLineArgs": "-i \"D:\\Github\\IMG2SCHEM\\IMG2SCHEM\\1x1.jpg\" -p -s 3x3 -c 32 16 16 16"
+    },
+    "4x6": {
+      "commandName": "Project",
+      "commandLineArgs": "-i \"D:\\Github\\IMG2SCHEM\\IMG2SCHEM\\4x6.jpg\" -p -s 4x6 -c 16"
     }
   }
 }

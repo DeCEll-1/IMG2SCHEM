@@ -64,12 +64,22 @@ namespace IMG2SCHEM
 
         public static Color FromArray(IPixel<byte> arr, uint channels)
         {
-            byte r = arr[0];
-            byte g = arr[1];
-            byte b = arr[2];
-            byte a = 255;
-
-            return new Color(r, g, b, a);
+            switch (channels)
+            {
+                case 2:
+                    //byte c = (byte)(arr[0] * (arr[1] / 255d));
+                    byte c = arr[0];
+                    return new Color(c, c, c, 255);
+                case 3:
+                case 4:
+                    byte r = arr[0];
+                    byte g = arr[1];
+                    byte b = arr[2];
+                    byte a = 255;
+                    return new Color(r, g, b, a);
+                default:
+                    return new Color(255, 255, 255, 255);
+            }
         }
 
         public override string ToString()

@@ -49,13 +49,30 @@ namespace IMG2SCHEM
 
             #region image settings
 
-            [Option('r', "image-resolution", Required = false, HelpText = "The resolution(s) to resize the input image to for a display.")]
+            [Option('r', "image-resolution", Required = false, HelpText =
+                "(Default: 176) The resolution(s) to resize the input image to for a display. " +
+                "176 is the max resolution, 88 will render half resolution etc. etc. \r\n" +
+                "Multiple space-separated values (e.g. 44 88 176) " +
+                "will cycle through the list for each display tile (from left to right top to bottom)"
+                )]
             public IEnumerable<uint> ImageResolutions { get; set; } = [];
 
-            [Option('c', "color-amount", Required = false, HelpText = "The amount(s) of colors to be used.")]
+            [Option('c', "color-amount", Required = false, HelpText =
+                "(Default: 16) Number of distinct colors used for displays. " +
+                "Use a single value (e.g. 96) for consistent quality across the entire image.\r\n" +
+                "Multiple space-separated values (e.g. 8 16 32) " +
+                "will cycle through the list for each display tile (from left to right top to bottom)\r\n" +
+                "/!\\ Not suggested to input more than 48 as it will increase the amount of processors significantly.\r\n" +
+                "[!] This is a good setting to reduce if theres too many processor usage."
+                )]
             public IEnumerable<uint> ImageColorAmounts { get; set; } = [];
 
-            [Option('d', "dithering-method", Required = false, HelpText = "The dithering method(s) to be used.")]
+            [Option('d', "dithering-method", Required = false, HelpText =
+                "(Default: No) Dithering algorithm(s) to reduce color banding. " +
+                "Available: No, Riemersma, FloydSteinberg.\r\n" +
+                "Multiple space-separated values (e.g. No Riemersma FloydSteinberg) " +
+                "will cycle through the list for each display tile (from left to right top to bottom)"
+                )]
             public IEnumerable<DitherMethod> ImageDitherMethods { get; set; } = [];
 
             #endregion
@@ -113,6 +130,7 @@ namespace IMG2SCHEM
 
         static void Main(string[] args)
         {
+            
             var parser = new Parser(with =>
             {
                 with.CaseInsensitiveEnumValues = true;
@@ -138,6 +156,7 @@ namespace IMG2SCHEM
                             parser.ParseArguments<Options>(args),
                             h =>
                             {
+                                h.MaximumDisplayWidth = 100;
                                 h.AutoVersion = true;
                                 h.AutoHelp = true;
                                 h.AddEnumValuesToHelpText = true;
@@ -183,14 +202,6 @@ namespace IMG2SCHEM
                 return false;
             }
 
-            (int x, int y) shapeXY = (shape.Width, shape.Height);
-
-            if (!PreDefinedClusterShapes.validShapes.Contains(shapeXY))
-            {
-                Console.WriteLine($"Error: No predefined cluster shape found for {options.DisplayShape.Width}x{options.DisplayShape.Height}.");
-                return false;
-            }
-
             if (!options.OutputToFile && !options.PasteToClipBoard && !options.PrintOutput)
             {
                 if (PromptYesNo("No output specified. Save to file?"))
@@ -232,27 +243,7 @@ namespace IMG2SCHEM
             Schematic schem = new();
             schem.Name = options.SchematicName;
 
-
-            switch (options.DisplayShape)
-            {
-                case { Width: 1, Height: 1 }:
-                    PreDefinedClusterShapes.Get1x1(FullImage).FillSchem(schem);
-                    break;
-                case { Width: 2, Height: 1 }:
-                    PreDefinedClusterShapes.Get2x1(FullImage).FillSchem(schem);
-                    break;
-                case { Width: 1, Height: 2 }:
-                    PreDefinedClusterShapes.Get1x2(FullImage).FillSchem(schem);
-                    break;
-                case { Width: 2, Height: 2 }:
-                    PreDefinedClusterShapes.Get2x2(FullImage).FillSchem(schem);
-                    break;
-                default:
-                    Console.WriteLine($"Error: No predefined cluster shape found for {options.DisplayShape.Width}x{options.DisplayShape.Height}.");
-                    break;
-            }
-
-
+            DisplayCluster.BuildCluster(FullImage, options.DisplayShape.Width, options.DisplayShape.Height).FillSchem(schem);
 
             string schemOut = schem.GetBase64();
 

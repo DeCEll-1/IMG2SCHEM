@@ -3,10 +3,12 @@ using MindustryChematicCreator;
 using MindustryChematicCreator.Configs;
 using MindustrySchematicCreator;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -15,7 +17,7 @@ namespace IMG2SCHEM
     public class DisplaySection
     {
         private MagickImage Image { get; set; }
-        private Block DisplayBlock { get; set; }
+        public Block DisplayBlock { get; set; }
         private List<Block> ProcessorBlocks { get; set; } = new();
 
         private List<(int x, int y)> LegitProcessorCoords = new();
@@ -32,13 +34,57 @@ namespace IMG2SCHEM
         private bool Debug => Program.options.Debug;
         private string debugFilePrefix = "";
 
-        public DisplaySection(int displayBlockX, int displayBlockY, MagickImage image, List<(int x, int y)> legitProcessorCoords, string debugFilePrefix = "", BlockType blockType = BlockType.large_logic_display, int i = 0)
+        public DisplaySection(int displayBlockX, int displayBlockY, MagickImage image, string debugFilePrefix = "", BlockType blockType = BlockType.large_logic_display, int i = 0)
         {
             DisplayBlock = new(BlockData.Blocks[blockType], displayBlockX, displayBlockY);
             Image = image;
-            LegitProcessorCoords = legitProcessorCoords;
+            //LegitProcessorCoords = legitProcessorCoords;
             this.debugFilePrefix = debugFilePrefix;
             this.i = i;
+        }
+        public static bool[,] _filled { get; set; } // well its not like we gonna run this app more than once so who cares?
+
+        private void AddProcessorSlot() // todo: add distance check for connection issues
+            => LegitProcessorCoords.Add(BFSNonFilledCoordinate((DisplayBlock.xOffset + 2, DisplayBlock.yOffset + 2)));
+
+        public (int x, int y) BFSNonFilledCoordinate((int x, int y) root)
+        {
+            int width = _filled.GetLength(0);
+            int height = _filled.GetLength(1);
+            var visited = new bool[width, height];
+            Queue<(int x, int y)> que = [];
+            que.Enqueue(root);
+            visited[root.x, root.y] = true;
+            while (que.Count != 0)
+            {
+                (int x, int y) tile = que.Dequeue();
+                if (!_filled[tile.x, tile.y])
+                { // if the file isnt filled
+                    _filled[tile.x, tile.y] = true;
+                    return tile;
+                }
+                else
+                { // if the tile is filled
+                    foreach ((int x, int y) t in new (int x, int y)[] {
+                        (tile.x + 1, tile.y),
+                        (tile.x - 1, tile.y),
+                        (tile.x, tile.y + 1),
+                        (tile.x, tile.y - 1),
+                    })
+                    {
+                        if (
+                            t.x >= 0 && t.x < width &&
+                            t.y >= 0 && t.y < height &&
+                            !visited[t.x, t.y]
+                        )
+                        {
+                            visited[t.x, t.y] = true;
+                            que.Enqueue((t.x, t.y));
+                        }
+                    }
+                }
+            }
+            return (-1, -1);
         }
 
         public void CreateColorBlocks()
@@ -50,7 +96,7 @@ namespace IMG2SCHEM
 
             if (Debug)
             {
-                string debugPath = $"{Path.GetTempPath()}/{debugFilePrefix}_display_{DisplayBlock.xOffset}_{DisplayBlock.yOffset}_{Guid.NewGuid()}.jpg";
+                string debugPath = $"{Path.GetTempPath()}{debugFilePrefix}_display_{DisplayBlock.xOffset}_{DisplayBlock.yOffset}_{Guid.NewGuid()}.jpg";
                 Image.Write(new FileInfo(debugPath));
                 Console.WriteLine($"Wrote processed image for display at ({DisplayBlock.xOffset}, {DisplayBlock.yOffset}) to: {debugPath}");
             }
@@ -134,12 +180,12 @@ namespace IMG2SCHEM
 
             void AddLogic()
             {
+                AddProcessorSlot();
                 if (coordIndex >= LegitProcessorCoords.Count())
                 {
                     Console.WriteLine($"Warning: Exceeded processor coordinates for display at ({DisplayBlock.xOffset},{DisplayBlock.yOffset}).");
                     return;
                 }
-
                 var (x, y) = LegitProcessorCoords.ElementAt(coordIndex);
                 var logicBlock = new Block(BlockData.Blocks[BlockType.micro_processor], x, y);
                 var clonedConfig = (LogicCodeConfig)code.Clone();
