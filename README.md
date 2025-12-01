@@ -2,7 +2,8 @@
 
 
 
-requires https://github.com/DeCEll-1/MindustryChematicCreator as dependency
+requires https://github.com/DeCEll-1/MindustryChematicCreator as dependency (included in the bin file)
+
 4x6 from: https://x.com/Green_Kohgen/status/1003582195728932870
 
 ```
