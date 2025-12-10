@@ -54,32 +54,42 @@ requires https://github.com/DeCEll-1/MindustryChematicCreator as dependency (inc
 
 Examples:
 
-1. Save output to file instead of clipboard
-IMG2SCHEM -i "image.png" -o "image.msch"
+Save output to file instead of clipboard
+    
+    IMG2SCHEM -i "image.png" -o "image.msch"
 
-2. Use multiple resolutions cycling per tile
-IMG2SCHEM -i "image.jpg" -s 2x2 -r 44 88 176
+Use multiple resolutions cycling per tile
+    
+    IMG2SCHEM -i "image.jpg" -s 2x2 -r 44 88 176
 
-3. Force overwrite + custom name
-IMG2SCHEM -i "image.png" -o "image.msch" -y --name "MyDisplay"
+Force overwrite + custom name
+    
+    IMG2SCHEM -i "image.png" -o "image.msch" -y --name "MyDisplay"
 
-4. High color amount
-IMG2SCHEM -i "image.png" -c 48
+High color amount
+    
+    IMG2SCHEM -i "image.png" -c 48
 
-5. Cycle dithering methods
-IMG2SCHEM -i "image.png" -d No Riemersma FloydSteinberg
+Cycle dithering methods
+    
+    IMG2SCHEM -i "image.png" -d No Riemersma FloydSteinberg
 
-6. resolution + color + dithering
-IMG2SCHEM -i "image.png" -s 3x3 -r 88 176 -c 32 48 -d Riemersma
+resolution + color + dithering
+    
+    IMG2SCHEM -i "image.png" -s 3x3 -r 88 176 -c 32 48 -d Riemersma
 
-7. auto-yes, output to file
-IMG2SCHEM -i "image.png" -o "map_disp.msch" -y --print-output
+auto-yes, output to file
 
-8. Debug mode
-IMG2SCHEM -i "image.png" --debug -v
+    IMG2SCHEM -i "image.png" -o "map_disp.msch" -y --print-output
 
-9. High quality 4×6 display grid
-IMG2SCHEM -i "image.png" -s 4x6 -r 176 -c 96
+Debug mode
+    
+    IMG2SCHEM -i "image.png" --debug -v
 
-10. Minimal
-IMG2SCHEM -i "image.png" -c 8 -d No
+High quality 4×6 display grid
+    
+    IMG2SCHEM -i "image.png" -s 4x6 -r 176 -c 96
+
+Minimal
+    
+    IMG2SCHEM -i "image.png" -c 8 -d No
